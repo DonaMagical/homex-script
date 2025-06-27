@@ -1,0 +1,5 @@
+dotenv
+google-genai
+openpyxl
+pyyaml
+requests

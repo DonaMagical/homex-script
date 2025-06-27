@@ -1,0 +1,126 @@
+- standard: Metal
+  alternatives:
+    - mtl
+    - metl
+    - met
+- standard: Romex
+  alternatives:
+    - Rx
+    - Rmx
+- standard: Bracket
+  alternatives:
+    - Brkt
+    - bkt
+- standard: Clamp
+  alternatives:
+    - clmp
+- standard: Round
+  alternatives:
+    - Rnd
+- standard: IN
+  alternatives:
+    - Inch
+    - '"""'
+- standard: Gang
+  alternatives:
+    - Gng
+    - G
+- standard: Deep
+  alternatives:
+    - Dp
+- standard: ceiling
+  alternatives:
+    - ceil
+- standard: Work
+  alternatives:
+    - wk
+- standard: Connector
+  alternatives:
+    - Conn
+    - Cnnct
+- standard: Street
+  alternatives:
+    - Str
+    - St
+- standard: Receptacle
+  alternatives:
+    - Rec
+    - Recpt
+- standard: Single
+  alternatives:
+    - Sngl
+- standard: Speed
+  alternatives:
+    - Spd
+- standard: Control
+  alternatives:
+    - Ctrl
+    - Cont
+- standard: Midway
+  alternatives:
+    - Midw
+- standard: Handy
+  alternatives:
+    - Hndy
+- standard: Steel
+  alternatives:
+    - Stl
+- standard: Bushing
+  alternatives:
+    - Bush
+- standard: Nipple
+  alternatives:
+    - Nip
+- standard: Coupling
+  alternatives:
+    - Cplg
+    - Coup
+- standard: Adapter
+  alternatives:
+    - Adapt
+    - Adpt
+- standard: Long
+  alternatives:
+    - Lng
+- standard: Shallow
+  alternatives:
+    - Shal
+- standard: Assembly
+  alternatives:
+    - Ass
+- standard: Insulation
+  alternatives:
+    - Insul
+- standard: Galvanized
+  alternatives:
+    - Galv
+- standard: Pressure
+  alternatives:
+    - Pr
+    - Pres
+- standard: Sweat
+  alternatives:
+    - Swt
+- standard: Compression
+  alternatives:
+    - Comp
+- standard: Angle
+  alternatives:
+    - ang
+- standard: Lead
+  alternatives:
+    - LF
+- standard: BlackIron
+  alternatives:
+    - Blk
+    - BI
+- standard: FT
+  alternatives:
+    - Foot
+- standard: Shower
+  alternatives:
+    - Shwr
+- standard: Double
+  alternatives:
+    - Dbl
+    - Db
