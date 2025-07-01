@@ -2,9 +2,12 @@ import argparse
 import os
 import sys
 from dotenv import load_dotenv
-from ai import GeminiClient
+from qdrant_client import QdrantClient
 from type import Provider, sorted_providers
 from merge import Merge
+from sheet import load_workbooks
+from vector import VectorStore
+from ai import GeminiClient
 
 load_dotenv()
 
@@ -35,11 +38,25 @@ def main():
         print("Error: API key must be provided via --api-key argument or GEMINI_API_KEY environment variable")
         sys.exit(1)
 
-    gemini_client = GeminiClient(api_key)
+    ai_client = GeminiClient(api_key)
 
-    reference_provider = Provider(args.reference_provider)
+    qdrant_url = os.getenv('QDRANT_API_URL')
+    qdrant_api_key = os.getenv('QDRANT_API_KEY')
+    if not qdrant_url or not qdrant_api_key:
+        print("Error: QDRANT_API_URL and QDRANT_API_KEY must be provided via environment variables")
+        sys.exit(1)
+    
+    qdrant_client = QdrantClient(
+        os.getenv('QDRANT_API_URL'),
+        api_key=os.getenv('QDRANT_API_KEY')
+    )
+    vector_store = VectorStore(qdrant_client)
 
-    merger = Merge(reference_provider, gemini_client, args.checkpoint_file)
+    workbooks = load_workbooks()
+
+    # vector_store.store_embeddings(ai_client, workbooks) # already done
+
+    merger = Merge(workbooks, Provider.Haller, ai_client, vector_store, args.checkpoint_file)
     merger.merge(args.output_file)
 
     print("Done!")

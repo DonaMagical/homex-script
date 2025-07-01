@@ -1,21 +1,21 @@
 from collections import defaultdict
-from typing import DefaultDict, Optional
+from typing import DefaultDict, Optional, Union
 from notification import send_push_notification
 from sheet import ProviderItem, ProviderWorkbook
 from ai import AIMatchType, AIResponse, GeminiClient
 from io_util import file_exists, load_merges_from_json, output_merge_table, save_merges_to_json
 from type import ExactCodeMatch, HazyLLMMatch, StrongLLMMatch, ItemMerge, ItemReference, ItemOutput, NoMatch, Provider, sorted_providers
+from vector import VectorStore
 
 class Merge:
-    CHECKPOINT_INTERVAL = 10
+    CHECKPOINT_INTERVAL = 2
     
-    def __init__(self, reference_provider: Provider, client: GeminiClient, checkpoint_file: str = None):
+    def __init__(self, workbooks: dict[Provider, ProviderWorkbook], reference_provider: Provider, ai_client: GeminiClient, vector_store: VectorStore, checkpoint_file: str = None):
+        self.__workbooks = workbooks
         self.reference_provider = reference_provider
-        self.__client = client
+        self.__ai_client = ai_client
+        self.__vector_store = vector_store
         self.__checkpoint_file = checkpoint_file
-        self.__workbooks: dict[Provider, ProviderWorkbook] = {}
-        for provider in Provider:
-            self.__workbooks[provider] = ProviderWorkbook(provider)
 
     def workbook(self, provider: Provider) -> ProviderWorkbook:
         return self.__workbooks[provider]
@@ -54,7 +54,7 @@ class Merge:
             workbook = self.workbook(provider) 
             print(f"Merging provider: {provider} ({len(workbook.item_refs)} items)") 
             
-            reference_items = self.__get_reference_items(provider, item_merges)
+            reference_filters = self.__get_reference_filters(provider, item_merges)
             
             for idx, item_ref in enumerate(workbook.item_refs):
                 if idx % self.CHECKPOINT_INTERVAL == 0:
@@ -65,7 +65,7 @@ class Merge:
                     continue
                 item = self.get_item_by_ref(item_ref)
                 try:
-                    item_merge = self.__merge_item(item, reference_items)
+                    item_merge = self.__merge_item(item, reference_filters)
                     item_merges.append(item_merge)
                 except Exception as e:
                     self.__save_checkpoint(item_merges)
@@ -74,14 +74,22 @@ class Merge:
         send_push_notification("Script Completed", f"Merged {len(item_merges)} items")
         return item_merges
     
-    def __get_reference_items(self, current_provider: Provider, merges: list[ItemMerge]) -> list[ProviderItem]:
-        item_refs: list[ItemReference] = self.reference_workbook.item_refs
-        for merge in merges:
-            if isinstance(merge, NoMatch) and merge.query.provider != current_provider:
-                item_refs.append(merge.query)
-        return [self.get_item_by_ref(item_ref) for item_ref in item_refs]
+    def __get_reference_filters(self, current_provider: Provider, merges: list[ItemMerge]) -> list[Union[Provider, ItemReference]]:
+        ref_filters: list[Union[Provider, ItemReference]] = []
+        ordered_providers: list[Provider] = [self.reference_provider] + [p for p in sorted_providers if p != self.reference_provider]
+        for provider in ordered_providers:
+            if provider == current_provider:
+                break
+            if provider == self.reference_provider:
+                ref_filters.append(provider)
+                break
+            for merge in merges:
+                if isinstance(merge, NoMatch) and merge.query.provider == provider:
+                    ref_filters.append(merge.query)
+
+        return ref_filters
     
-    def __merge_item(self, item: ProviderItem, reference_items: list[ProviderItem]) -> ItemMerge:
+    def __merge_item(self, item: ProviderItem, reference_filters: list[Union[Provider, ItemReference]]) -> ItemMerge:
         # Exact code match
         reference_workbook = self.workbook(self.reference_provider)
         matching_code_item = reference_workbook.get_item_by_code(item.code)
@@ -92,16 +100,20 @@ class Merge:
             )
         
         # LLM-based match
-        return self.__match_with_llm(item, reference_items)
+        return self.__match_with_llm(item, reference_filters)
     
-    def __match_with_llm(self, item: ProviderItem, reference_items: list[ProviderItem]) -> ItemMerge:
-        match_result = self.__client.generate_match_response_chunked(reference_items, item)
+    def __match_with_llm(self, item: ProviderItem, reference_filters: list[Union[Provider, ItemReference]]) -> ItemMerge:
+        # First filter for relevant reference items
+        relevant_items = self.__vector_store.get_relevant_items(item.to_item_ref(), reference_filters)
+        full_reference_items = [self.get_item_by_ref(item_ref) for item_ref in relevant_items]
+
+        match_result = self.__ai_client.generate_match_response_advanced(full_reference_items, item)
         merge = self.__evaluate_llm_match(item, match_result)
         if merge is not None:
             return merge
         
         print(f"Initial AI match didn't return valid item, attempting follow-up match")
-        match_result = self.__client.generate_followup_match_response(reference_items, item, match_result)
+        match_result = self.__ai_client.generate_followup_match_response(full_reference_items, item, match_result)
         merge = self.__evaluate_llm_match(item, match_result)
         if merge is not None:
             return merge
@@ -149,23 +161,36 @@ class Merge:
     def __to_output_data(self, coalesced_merges: list[tuple[ItemReference, list[ItemMerge]]]) -> list[list[Optional[ItemOutput]]]:
         output_data: list[list[Optional[ItemOutput]]] = []
         ordered_providers: list[Provider] = [self.reference_provider] + [p for p in sorted_providers if p != self.reference_provider]
+        
         for (base_ref, merges) in coalesced_merges:
-            row_data: list[Optional[ItemOutput]] = []
             merges_by_provider = group_merges_by_provider(merges)
+            
+            # Find the maximum number of merges for any provider
+            max_merges_per_provider = 1
             for provider in ordered_providers:
-                if provider == base_ref.provider:
-                    item = self.get_item_by_ref(base_ref)
-                    row_data.append(item.to_item_output(None))
-                    continue
-                merges_for_provider = merges_by_provider[provider]
-                if merges_for_provider:
-                    merge_for_provider = merges_for_provider[0]
-                    item = self.get_item_by_ref(merge_for_provider.query)
-                    item_output = item.to_item_output(merge_for_provider.type)
-                    row_data.append(item_output)
-                else:
-                    row_data.append(None)
-            output_data.append(row_data)
+                if provider != base_ref.provider:
+                    merges_for_provider = merges_by_provider[provider]
+                    max_merges_per_provider = max(max_merges_per_provider, len(merges_for_provider))
+            
+            # Create rows for each merge combination
+            for merge_index in range(max_merges_per_provider):
+                row_data: list[Optional[ItemOutput]] = []
+                for provider in ordered_providers:
+                    if provider == base_ref.provider:
+                        item = self.get_item_by_ref(base_ref)
+                        row_data.append(item.to_item_output(None))
+                        continue
+                    
+                    merges_for_provider = merges_by_provider[provider]
+                    if merge_index < len(merges_for_provider):
+                        merge_for_provider = merges_for_provider[merge_index]
+                        item = self.get_item_by_ref(merge_for_provider.query)
+                        item_output = item.to_item_output(merge_for_provider.type)
+                        row_data.append(item_output)
+                    else:
+                        row_data.append(None)
+                output_data.append(row_data)
+        
         return output_data
     
 def index_merges(merges: list[ItemMerge]) -> tuple[dict[ItemReference, ItemMerge], dict[ItemReference, ItemMerge]]:

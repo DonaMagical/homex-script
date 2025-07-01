@@ -2,7 +2,7 @@ import json
 from itertools import chain
 import os
 from typing import List, Dict, Any, Optional
-from type import ItemMerge, ItemOutput, MatchType, ExactCodeMatch, HazyLLMMatch, Provider, StrongLLMMatch, NoMatch
+from type import ItemMerge, ItemOutput, ItemReference, MatchType, ExactCodeMatch, HazyLLMMatch, Provider, StrongLLMMatch, NoMatch
 from openpyxl import Workbook
 
 def file_exists(filename: str) -> bool:
@@ -26,6 +26,11 @@ def save_merges_to_json(merges: List[ItemMerge], filename: str) -> None:
     with open(filename, 'w') as f:
         json.dump([merge.to_dict() for merge in merges], f, indent=2)
 
+def add_to_revisit_list(item_ref: ItemReference, filename: str = "output/items-to-revisit.txt") -> None:
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, 'a', encoding='utf-8') as f:
+        f.write(f"{item_ref.provider},{item_ref.sheet_name},{item_ref.id}\n")
+
 def load_merges_from_json(filename: str) -> List[ItemMerge]:
     with open(filename, 'r') as f:
         data = json.load(f)
@@ -46,16 +51,16 @@ def to_merge_table_row_section(section_input: Optional[ItemOutput]) -> list:
     
     return [
         to_merge_table_match_type(section_input.match_type),
-        section_input.category_id,
-        section_input.category_name,
+        str(section_input.category_id) if section_input.category_id is not None else '',
+        str(section_input.category_name) if section_input.category_name is not None else '',
         'INV' if section_input.is_inventory else 'NI',
         section_input.id,
-        section_input.code,
-        section_input.name,
-        section_input.description,
-        section_input.intacct_gl_group,
-        section_input.unit_of_measure,
-        section_input.cost,
+        str(section_input.code) if section_input.code is not None else '',
+        str(section_input.name) if section_input.name is not None else '',
+        str(section_input.description) if section_input.description is not None else '',
+        str(section_input.intacct_gl_group) if section_input.intacct_gl_group is not None else '',
+        str(section_input.unit_of_measure) if section_input.unit_of_measure is not None else '',
+        float(section_input.cost) if section_input.cost is not None else 0.0,
     ]
 
 def to_merge_table_row(row_input: list[Optional[ItemOutput]]) -> list:

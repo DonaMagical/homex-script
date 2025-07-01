@@ -1,7 +1,7 @@
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.cell import Cell
-from typing import Tuple, Optional, Any
+from typing import Dict, Tuple, Optional, Any
 from type import Provider, ItemReference, SheetName, ItemOutput, MatchType
 
 
@@ -180,3 +180,7 @@ class ProviderWorkbook:
     def get_item_by_code(self, code: str) -> Optional[ProviderItem]:
         ref = self.__code_to_item_ref.get(code)
         return self.get_item_by_ref(ref) if ref is not None else None
+    
+
+def load_workbooks() -> Dict[Provider, ProviderWorkbook]:
+    return {provider: ProviderWorkbook(provider) for provider in Provider}
